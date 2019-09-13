@@ -236,13 +236,18 @@ def by_files(json_path_list):
             json_file.truncate()
 
         print "End work with json file."
-
-def get_argv():
-    return
+# str
+def get_json_names_from_argv():
+    jnl = list()
+    for item in sys.argv:
+        if item.find('.json') > 0:
+            jnl.append(item)
+    return jnl
 
 def run():
     if len(sys.argv) > 1:
-        return
+        # find path to files ?
+        by_files(get_json_names_from_argv())
     else:
         jsonPathList = find_all_paths_to_json()
         by_files(jsonPathList)
