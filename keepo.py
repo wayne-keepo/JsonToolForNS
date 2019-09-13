@@ -21,7 +21,6 @@ NS_PROFILE = 'nsProfileId'
 JSON_TYPE_FILTER = "\\*.json"
 
 
-# final func
 def find_all_paths_to_json():
     print "Start searching all paths to json files.."
     json_path_list = []
@@ -34,16 +33,16 @@ def find_all_paths_to_json():
     return json_path_list
 
 
-def by_files(json_path_list):
-    for pathToJson in json_path_list:
-        print "Start work with json file: " + pathToJson
-        with open(pathToJson) as json_file:
-            data = json.load(json_file)
+def set_key_name_by_path(data, path, newName):
+    if len(path) == 1:
+        data.update({newName: data.pop(path[0])})
+        return
+    if len(path) == 2:
+        data[path[0]].update({newName: data[path[0]].pop(path[1])})
+        return
+    else:
+        set_key_name_by_path(data[path.pop(0)], path, newName)
 
-        print "End work with json file."
-
-
-# ---------------------------
 
 def get_value_by_path(data, path):
     if len(path) == 1:
@@ -131,38 +130,61 @@ def extract_nested_nss(data):
 # > find Nested NS and repeat operation as for NS
 def transfiguration(data):
     # 1. find all NS:
+    print "##########################################################"
+    print "START TRANSFIGURATION..."
+    print "---------------------"
+    print "Start searching all NS..."
     root_ns_list = [{match.full_path: match.value} for match in parse('$..%s' % ADDITIONAL_PARAMS_FOR_NS).find(data)]
+    print root_ns_list
+    print "End searching all NS."
+    print "---------------------"
     result = dict()
     # 2. walk by list of NS dict for extract pair {pathToNs:NsValue}
     for root_ns_dict in root_ns_list:
         # 3. walk by NS dict for start creating root AP and nested AP for every NS
         for paths, values in root_ns_dict.items():
+            print "Start transfiguration for NS by path: %s" % str(paths)
             tmp_root_ap = create_root(values)
             # 4. find VNF AP
             root_vnf_list = [{match.full_path: match.value} for match in
                              parse('$..%s' % ADDITIONAL_PARAMS_FOR_VNF).find(data)]
             # 5. extract VNF AP which are only at the NS AP level
             root_vnf_ = find_nested_params_for_ns_by_ns_path_lvl(paths, root_vnf_list)
+
             # 6. find nested NS AP
             nested_nss_list = [{match.full_path: match.value} for match in
                                parse('$..%s' % ADDITIONAL_PARAMS_FOR_NESTED_NS).find(data)]
             # 7. extract nested NS AP which are only at the NS level
             nested_nss_ = find_nested_params_for_ns_by_ns_path_lvl(paths, nested_nss_list)
-
             # 8. create nested params for nns and vnf && fill nested ap && delete nns and vnf from source json
             if root_vnf_ is not None:
+                print "---------------------"
+                print "\tStart extract>convert>delete VNF..."
+                print "\tVNF paths: %s" % str(root_vnf_.keys()[0])
                 ext_nested_vnfs = extract_vnfs(root_vnf_.values()[0])
                 tmp_root_ap[FOR_RESULT_DOC_NESTED_ADDITIONAL_PARAMS].extend(ext_nested_vnfs)
-                delete_child_by_path(data, root_vnf_.keys()[0].split('.'))
-
+                delete_child_by_path(data, str(root_vnf_.keys()[0]).split('.'))
+                print "\tEnd extract>convert>delete VNF..."
+                print "---------------------"
             if nested_nss_ is not None:
+                print "---------------------"
+                print "\tStart extract>convert>delete nested NS..."
+                print "\tNested NS paths: %s" % str(nested_nss_.keys()[0])
                 ext_nested_nss = extract_nested_nss(nested_nss_.values()[0])
                 tmp_root_ap[FOR_RESULT_DOC_NESTED_ADDITIONAL_PARAMS].extend(ext_nested_nss)
                 delete_child_by_path(data, str(nested_nss_.keys()[0]).split('.'))
+                print "\tEnd extract>convert>delete nested NS..."
+                print "---------------------"
 
-            # delete nested nss and vnfs
+            print "Set key name by path: %s " % str(paths)
+            set_value_by_path(data, str(paths).split('.'), tmp_root_ap)
 
             result.update({paths: tmp_root_ap})
+            print "End transfiguration for NS by path: %s" % str(paths)
+
+    print "Result transfiguration: %s" % str(result)
+    print "END TRANSFIGURATION."
+    print "##########################################################"
     return result
 
 
@@ -207,135 +229,24 @@ def start(data):
     return root
 
 
-# print "\nSTART json session transfiguration...\n"
-# jsonPathList = findAllPathsToJson()
-# byFiles(jsonPathList)
-# print "\nEND json session transfiguration!"
+def by_files(json_path_list):
+    for pathToJson in json_path_list:
+        print "Start work with json file: " + pathToJson
+        with open(pathToJson) as json_file:
+            jData = json.load(json_file)
+            work_test = transfiguration(jData)
+            for path, ap in work_test.items():
+                set_key_name_by_path(jData, str(path).split('.'), FOR_RESULT_DOC_ADDITIONAL_PARAMS)
 
-# wt = open('C:\\Users\\dmpi0716\\Desktop\\test\\work_test.json')
-wt = open(
-    'C:\\Users\\dmpi0716\\Desktop\\CloudMANORepositories\\operation-executor\\decomposer\\src\\test\\resources\\stubs\\ns\\instantiateNestedNs\\mrs_instantiate_nested_pure_operation_data.json')
+            json_file.seek(0)  # rewind
+            json.dump(jData, json_file)
+            json_file.truncate()
 
-jData = json.load(wt)
-work_test = transfiguration(jData)
-for path, ap in work_test.items():
-    print path
-    print json.dumps(ap)
-
-
-print jData
-
-# tests ----------------------------------------------------------------------------------------------------------------------
-
-# qqq = {"vnfProfile": "VNF1", "q": 1, "w": 2, ADDITIONAL_PARAMS: {"z": 3, "x": 4}}
-# qqq2 = {"vnfProfile": "VNF1", ADDITIONAL_PARAMS: {"z": 3, "x": 4}}
-#
-# ttt = dict()
-# ttt[TEMPLATE] = qqq.pop(VNF_PROFILE)
-# if qqq.get(ADDITIONAL_PARAMS):
-#     ttt[ADDITIONAL_PARAMS] = qqq.pop(ADDITIONAL_PARAMS)
-# ttt[ADDITIONAL_PARAMS].update(qqq)
-#
-# print ttt
+        print "End work with json file."
 
 
-# zh = searcher(jData.get(ADDITIONAL_PARAMS_FOR_NESTED_NS), ADDITIONAL_PARAMS_FOR_VNF)
-# print json.dumps(zh)
+def run():
+    jsonPathList = find_all_paths_to_json()
+    by_files(jsonPathList)
 
-# print "----------------NS----------------"
-# ns = [{match.full_path: match.value} for match in parse('$..%s' % ADDITIONAL_PARAMS_FOR_NS).find(jData)]
-# ns = [match.full_path for match in parse('$..%s' % ADDITIONAL_PARAMS_FOR_NS).find(jData)]
-# print ns
-# print len(ns)
-
-# print "---------VNF--------------"
-# gVnf = [{match.full_path: match.value} for match in parse("$..%s"%ADDITIONAL_PARAMS_FOR_VNF).find(jData)]
-# gVnf = [match.full_path for match in parse("$..%s"%ADDITIONAL_PARAMS_FOR_VNF).find(jData)]
-# print gVnf
-
-# print "--------------NNS-------------"
-# nns = [{match.full_path: match.value} for match in parse("$..%s"%ADDITIONAL_PARAMS_FOR_NESTED_NS).find(jData)]
-# nns = [match.full_path for match in parse("$..%s"%ADDITIONAL_PARAMS_FOR_NESTED_NS).find(jData)]
-# print nns
-
-keker = {
-    "instantiatedInfo": {
-        "additionalParamForNs": 123
-    },
-    "attributes": {
-        "instance": {
-            "additionalParamForNs": 234
-        },
-        "cod": {
-            "del": {
-                "a": 1,
-                "b": 2,
-                "test": {
-                    "test_a": "del_me",
-                    "test_b": "del_me_to"
-                }
-            },
-            "vasya": {
-                "zxc": "asd",
-                "kek": "shmek"
-            }
-        }
-    }
-}
-# print keker
-
-
-# path = 'attributes.cod.del.test'.split('.')
-# delete_child_by_path(keker, path)
-# print get_value_by_path(keker, path)
-# set_value_by_path(keker, path, {"this_change": "CHANGED"})
-# print get_value_by_path(keker, path)
-
-# print keker
-
-# tns = [{match.full_path: match.value} for match in parse('$..additionalParamForNs').find(jData)]
-# tns = [{match.full_path: match.value} for match in parse('$..additionalParamForVnf').find(jData)]
-# tns = [{match.full_path: match.value} for match in parse('$..additionalParamForNestedNs').find(jData)]
-# print type(tns)
-# for item in tns:
-#     for k,v in item.items():
-#         print type(k)
-#         print type(v)
-# print type(tns[0])
-
-# for v in tns:
-#     for k, v in v.items():
-#         print type(k)
-#         print k
-#         print type(v)
-#         print json.dumps(v)
-
-# v = 'attributes.instance.additionalParamForVnf'
-# n = 'attributes.instance.additionalParamForNs'
-# vv = ''.join(v.split('.')[:-1])
-# print vv
-# nn = ''.join(n.split('.')[:-1])
-# print nn
-# print vv==nn
-
-# for elem in ifilter(lambda x: x['type'] in keyValList, exampleSet):
-#     print elem
-
-# keys = str(tns[0].keys()[0]).split('.')
-# print get_value_by_path(keker, keys)
-#
-# set_value_by_path(keker, keys, 'changed')
-# print keker
-
-# ph = str(tns[0].keys()[0]).split('.')
-# print ph
-# print keker[ph[0]][ph[1]]
-
-# check = dict({ADDITIONAL_PARAMS:{"asd":123,"cxv":534, NESTED_ADDITIONAL_PARAMS:[]}})
-# l = [1,2,34,5,6,7,8,34,534,51,233,214,32,4]
-#
-# bg = ["123","dfgdf","vbdfer"]
-# check[ADDITIONAL_PARAMS][NESTED_ADDITIONAL_PARAMS].extend(l)
-# print check
-# check[ADDITIONAL_PARAMS][NESTED_ADDITIONAL_PARAMS].extend(bg)
-# print check
+run()
